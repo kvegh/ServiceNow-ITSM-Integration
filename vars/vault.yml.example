@@ -1,0 +1,21 @@
+---
+# Copy to vault.yml, fill in, then encrypt:
+#
+#     cp vars/vault.yml.example vars/vault.yml
+#     $EDITOR vars/vault.yml
+#     ansible-vault encrypt vars/vault.yml
+#
+# vault.yml is gitignored in plaintext form. Only commit it encrypted --
+# verify the $ANSIBLE_VAULT header is present with:
+#
+#     git diff --staged vars/vault.yml
+
+# Seed service account. Admin-scoped, "Web service access only" enabled.
+# The only hand-made object in this demo; bootstrap deprovisions it at the end.
+vault_sn_host: https://INSTANCE.service-now.com
+vault_sn_username: INSERT_SEED_USERNAME
+vault_sn_password: INSERT_SEED_PASSWORD
+
+# Integration account the bootstrap creates and the use cases run as.
+# The password is set by the bootstrap, not read from an existing account.
+vault_sn_integration_password: INSERT_GENERATED_PASSWORD

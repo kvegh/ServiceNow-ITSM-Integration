@@ -1,0 +1,24 @@
+---
+# Declares what this demo needs. NOT read by AAP project sync -- AAP only
+# resolves collections/requirements.yml at the project root, and this repo's
+# root is AAP-advanced-features/, not this directory.
+#
+# Use it for local development:
+#
+#     ansible-galaxy collection install -r collections/requirements.yml
+#
+# Verified present in ee-supported-rhel9 (2026-10-04), so AAP runs need no
+# install step:
+#     servicenow.itsm    2.16.0
+#     ansible.controller 4.8.9
+#     ansible.eda        2.12.1
+#     ansible.platform   2.7.20260812
+#
+# NOT in that image -- the Zabbix bootstrap needs it from somewhere else:
+#     community.zabbix
+collections:
+    - name: servicenow.itsm       # ITSM records + generic table API
+    - name: ansible.controller    # AAP job templates, credentials, projects
+    - name: ansible.eda           # event streams, rulebook activations
+    - name: ansible.platform      # gateway objects, OAuth application
+    - name: community.zabbix      # trigger action, media type

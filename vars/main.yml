@@ -1,0 +1,32 @@
+---
+# Non-sensitive configuration. Secrets live in vault.yml.
+
+# Account the bootstrap creates; the use cases authenticate as this.
+sn_integration_username: ansible.integration
+sn_integration_roles:
+    - rest_api_explorer
+    - catalog_admin
+
+# UC1 -- Service Catalog
+sn_catalog_item_name: Request Linux Server
+sn_catalog_category: Servers
+
+# UC2 -- incident defaults
+sn_incident_caller: "{{ sn_integration_username }}"
+sn_incident_close_code: Solved (Permanently)
+
+# UC3 -- CMDB
+sn_cmdb_class: cmdb_ci_server
+
+# AAP object names. Prefixed so they are never confused with the AIOps
+# demo's objects on the same controller.
+aap_prefix: SNOW Demo
+aap_organization: Default
+aap_project_name: AAP Advanced Features
+aap_credential_type_name: "{{ aap_prefix }} - ServiceNow"
+aap_credential_name: "{{ aap_prefix }} - ServiceNow Integration"
+
+# Zabbix. Scoped to its own host group so the AIOps demo's trigger action
+# is never touched.
+zabbix_host_group: SNOW Demo Hosts
+zabbix_action_name: "{{ aap_prefix }} - Create ServiceNow Incident"
