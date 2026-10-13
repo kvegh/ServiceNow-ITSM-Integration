@@ -1,0 +1,3 @@
+# Collections installed by ansible-galaxy, not the requirements file that
+# declares them. The umbrella repo's ignore rules do not apply to submodules.
+collections/ansible_collections/
