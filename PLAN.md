@@ -2,7 +2,7 @@
 
 ## Context
 
-A standalone ServiceNow ITSM integration demo, built in the `ServiceNow-ITSM-Integration` subdir of the AAP-advanced-features repo, covering three use cases:
+A standalone ServiceNow ITSM integration demo in its own `ServiceNow-ITSM-Integration` repository, linked into AAP-advanced-features as a Git submodule, covering three use cases:
 
 1. **UC1 — Service Catalog → Spoke → AAP:** ServiceNow catalog item triggers AAP job via Ansible Spoke, job processes the request and updates/closes the SNow ticket + CMDB
 2. **UC2 — Zabbix → EDA → SNow incident:** Zabbix fires an event, EDA triggers an AAP job, Ansible creates/updates/closes a ServiceNow incident
@@ -10,11 +10,13 @@ A standalone ServiceNow ITSM integration demo, built in the `ServiceNow-ITSM-Int
 
 Uses the certified `servicenow.itsm` collection throughout.
 
-### Everything automated
+### Automation goal and setup account
 
-**No click-through setup.** Every object this demo needs — on ServiceNow, on AAP, and on Zabbix — is created by a playbook in this subdir. The demo must be reproducible from scratch against a fresh ServiceNow instance by running the bootstrap in Phase 0.
+**Automate the demo's configuration.** Objects on ServiceNow, AAP, and Zabbix should be reproducible through Phase 0. Licensing and Spoke availability are prerequisites. UC1's OAuth authorization and Flow deployment must be proven before claiming fully automated setup; any unavoidable manual prerequisite must be documented explicitly.
 
-The single unavoidable exception is the **seed service account**: an admin-scoped ServiceNow user with "Web service access only" enabled, created by hand because there is no API to call before an API account exists. Everything after that is automated, and the bootstrap deprovisions the seed account at the end.
+The **seed service account** is the initial admin account used to create the first configuration, including a separate integration account for everyday demo jobs. It is created by hand because the bootstrap needs an existing API account to authenticate. Validate its API authentication under the instance's existing access policies.
+
+Keep this setup account available for bootstrap reruns, development, and teardown. Bootstrap must not deactivate it automatically. Optional deactivation belongs in a separate finalization step, after successful verification and after documenting how authorized admin access will be restored or supplied for future setup and resets. Deactivation means making the account inactive, not deleting it.
 
 Docs in `docs/` describe how to *run* the automation and what it creates — they are not click-through instructions.
 
@@ -32,23 +34,27 @@ UC2 reuses Zabbix as an event source, but with its **own** rulebook, own ruleboo
 
 ## Prerequisites
 
-Only things that cannot be automated — licensing, the seed account, and collection availability. Everything else is Phase 0's job.
+Start UC2 with the setup account, working API access, and its required collections. UC1 adds licensing, Spoke availability, and the feasibility checks below; these must not block the incident-management demo.
 
 ### Manual (unavoidable)
 
-- [ ] **Seed service account on ServiceNow** — admin-scoped user, Active=true, Locked out=false, **Web service access only=true**, Password needs reset=false. The "Web service access only" flag is what bypasses SSO/MFA enforcement for machine accounts; without it the API returns 401. This is the only hand-made object; the bootstrap deprovisions it at the end.
+- [ ] **Seed/setup service account on ServiceNow** — admin-scoped user, Active=true, Locked out=false, **Web service access only=true**, Password needs reset=false. Verify API authentication under the instance's existing access policies. Retain access for bootstrap reruns and teardown; optional deactivation is a separate finalization step.
 - [ ] **IntegrationHub subscription** — licensing gate for the Ansible Spoke (UC1). Cannot be automated; confirm it is active on the instance before planning on UC1.
 
 ### Verify before starting
 
-- [ ] **`servicenow.itsm` availability** — not currently synced to the Private Automation Hub's rh-certified repo. Either sync it from console.redhat.com, or declare it in `collections/requirements.yml` and let AAP install it at project sync (the PAH credential already exists).
+- [ ] **AAP project source** — use a dedicated `SNOW Demo - Project` pointing at the standalone Snow repository over HTTPS. Job-template paths are relative to this repository, such as `playbooks/snow_create_incident.yml`; `collections/requirements.yml` is at its project root. During implementation, replace the scaffold's umbrella-project default in `vars/main.yml` before bootstrap. The umbrella repository remains a submodule index and is not this demo's AAP project source.
+- [ ] **`servicenow.itsm` availability** — verify it in the chosen execution environment or use project-root `collections/requirements.yml` with an accessible, authorized collection source. Earlier availability notes are historical observations, not proof of the current environment.
 - [ ] **Other collections** — `ansible.controller` and `ansible.eda` (AAP config-as-code), `ansible.platform` (gateway objects such as the OAuth application), `community.zabbix` (Zabbix trigger action). Confirm each is reachable from the chosen EE.
 - [ ] **EE choice** — check whether `ee-supported-rhel9` carries the above. If not, prefer a project-level `collections/requirements.yml` over building a custom EE.
+- [ ] **Zabbix bootstrap dependency** — earlier scaffold notes recorded `community.zabbix` as missing from the chosen EE. Resolve its availability before running Zabbix bootstrap and verify its required Python dependencies in that EE. A collection download alone does not establish that its runtime dependencies are present.
+- [ ] **Integration-account permissions** — determine and document the roles and table permissions required by the enabled use cases. The scaffold's `rest_api_explorer` and `catalog_admin` list is not a verified incident/CMDB permission set. Verify incident read/create/update/resolve access for UC2, request access for UC1, and CI read/write access for UC3 using the integration account rather than the admin setup account.
 - [ ] **Spoke app installation** — installing the Ansible Spoke from the ServiceNow Store is likely not API-automatable. Verify; if it is a one-time Store install, document it as a prerequisite rather than pretending the bootstrap covers it.
+- [ ] **UC1 feasibility** — verify ServiceNow-to-AAP network reachability and TLS trust, the installed Spoke and AAP versions, OAuth token acquisition/refresh, and automated Flow deployment. Decide on a supported connection path, including a MID Server where required, without bypassing access controls. Document any unavoidable authorization step. Keep UC1 bootstrap components gated until these checks pass.
 
 ## Phase 0 — Bootstrap (everything as code)
 
-Creates every object the demo needs, on all three systems. Driven by `bootstrap.yml`, which imports the per-system playbooks below so a fresh environment is one command.
+Creates the enabled demo objects on all three systems. Driven by `bootstrap.yml`, which imports the per-system playbooks below. Build and verify UC2's bootstrap first; add gated UC1 and UC3 components alongside their use cases so an unavailable Spoke does not prevent UC2 setup.
 
 ### 0.1 Directory structure
 
@@ -58,6 +64,8 @@ ServiceNow-ITSM-Integration/
     README.md
     bootstrap.yml                         # one entry point: imports all three below
     teardown.yml                          # reverse, for a clean demo reset
+    finalize_setup.yml                    # optional setup-account deactivation
+    design_decisions_history.md
     collections/requirements.yml
     vars/
         main.yml                          # non-sensitive config, object names
@@ -92,14 +100,14 @@ ServiceNow-ITSM-Integration/
 
 ### 0.2 ServiceNow-side bootstrap (`bootstrap_servicenow.yml`)
 
-Runs as the seed account, creates everything else. Uses `servicenow.itsm.api` for generic table CRUD, since the collection's typed modules cover ITSM records but not platform configuration.
+Runs as the setup account and creates the enabled ServiceNow objects. Uses `servicenow.itsm.api` for generic table CRUD, since the collection's typed modules cover ITSM records but not platform configuration.
 
-- **Service accounts and roles** — the demo's own integration user (separate from the seed), with `rest_api_explorer` plus `catalog_admin` for `sc_catalog` writes. Table: `sys_user`, `sys_user_role`, `sys_user_has_role`.
+- **Service accounts and roles** — create the demo's own integration user, separate from the setup account. Assign the roles and table permissions verified for the enabled use cases; do not assume REST API Explorer access grants incident or CMDB write access. Catalog configuration is created using the setup account. Tables: `sys_user`, `sys_user_role`, `sys_user_has_role`. Smoke-test the integration account before creating its AAP credential or treating bootstrap as successful.
 - **Service Catalog item** — the UC1 catalog item and its variables. Tables: `sc_cat_item`, `item_option_new`.
 - **CMDB** — CI class usage and any seed CI records for UC3. Table: `cmdb_ci_server`.
 - **Spoke connection configuration** — connection alias and credential record pointing at AAP.
-- **Flow Designer flow** — *verify the automation path first.* Flow records (`sys_hub_flow` and related) are awkward to build field-by-field via REST. If direct creation proves impractical, ship the flow as an XML update set in `files/updatesets/` and have the playbook import and commit it. Either way it is automated — the update set is committed content, not a manual click-through.
-- **Deprovision the seed account** as the final task.
+- **Flow Designer flow** — *prove the deployment path first.* Flow records (`sys_hub_flow` and related) are awkward to build field-by-field via REST. An XML update set in `files/updatesets/` is a candidate, but automated import, preview, commit, and flow activation must be verified with its dependencies. Do not claim automation merely because an XML file exists. Keep instance-specific credentials and endpoints out of committed update sets.
+- **Retain the setup account** after bootstrap. Optional `finalize_setup.yml` deactivates it only after successful verification and a documented admin-access path for later bootstrap and teardown. Teardown does not deactivate the setup account.
 
 ### 0.3 AAP-side bootstrap (`bootstrap_aap.yml`)
 
@@ -109,9 +117,9 @@ Config-as-code via `ansible.controller`, `ansible.eda`, and `ansible.platform`:
     - inputs: `sn_host`, `sn_username`, `sn_password` (secret)
     - injectors: the three env vars
 - **ServiceNow credential** of that type
-- **Project** pointing at this repo
+- **Dedicated project** pointing at the standalone Snow repository over HTTPS, with project-root collection requirements and repository-relative playbook/rulebook paths. Do not repurpose the shared umbrella project.
 - **Job templates** for each UC playbook, named distinctly from AIOps objects
-- **OAuth application** for the Spoke to authenticate against (gateway object). Note: AAP 2.5+ auto-applies an API Script that causes 401s with the Spoke — the bootstrap must remove it, and the connection alias must use the `/controller/v2` endpoint path.
+- **OAuth application** for the Spoke to authenticate against (gateway object), with an AAP identity authorized to execute this demo's templates. Verify authorization and refresh against the installed versions. The reference describes a ServiceNow-applied OAuth API Script causing a 401 with some AAP 2.5 setups; clearing that field is a conditional, tested compatibility change to this demo's own application registry, not an unconditional bootstrap action. For AAP 2.5+, verify the full controller API path `/api/controller/v2/`; the Spoke's version attribute may be `controller/v2` because its action supplies `/api/` itself. Test the assembled URL rather than treating the attribute as a complete endpoint.
 - **EDA**: decision environment, Event Stream, and the rulebook activation for `zabbix-to-snow.yml`
 
 ### 0.4 Zabbix-side bootstrap (`bootstrap_zabbix.yml`)
@@ -136,11 +144,15 @@ Starting with UC2 because it has no Spoke dependency — no IntegrationHub subsc
    - Description with host, alert details, timestamps
    - Caller: service account
    - Impact/urgency mapped from Zabbix severity
-   - `set_stats` to pass `ticket_number` and `incident_sys_id` downstream
+   - Persist the original Zabbix problem event ID in the stock `correlation_id` field, with a demo/source prefix
+   - Look up that correlation ID first: create when absent, otherwise reuse/update the existing incident so repeated problem notifications do not create duplicate tickets
+   - `set_stats` may pass `ticket_number` and `incident_sys_id` within an AAP workflow; independent EDA launches must look up the persisted correlation ID
 
 3. **Playbook `snow_update_incident.yml`** — updates/resolves the incident:
+   - Recovery and escalation payloads carry the original problem event ID so each job can find the same incident without relying on a previous job's artifacts
    - On recovery: resolve with work notes
    - On escalation: add work notes, leave open, bump priority
+   - Repeated recovery leaves an already resolved incident resolved; a missing or ambiguous match is reported clearly without updating an unrelated incident
 
 4. **Own rulebook activation + job templates** in AAP, named distinctly so they are not confused with the AIOps demo's objects.
 
@@ -154,15 +166,15 @@ Dispatch on variable (`servicenow_action: create|update|close|find`):
 - `create`: `servicenow.itsm.incident` with state=new
 - `update`: add work notes, change state
 - `close`: set state=resolved, close_code, close_notes
-- `find`: `servicenow.itsm.incident_info` by number or sys_id
+- `find`: `servicenow.itsm.incident_info` by correlation ID for independent event handling, or by number/sys_id where already known
 
 Uses only stock ServiceNow incident fields — no custom `u_*` columns, no hardcoded caller.
 
 ## Phase 2 — UC1: Service Catalog → Spoke → AAP
 
-All setup for this UC is created by Phase 0 — the catalog item, Spoke connection, Flow Designer flow, and OAuth application. The only thing this phase adds is the fulfilment logic.
+Add this UC's gated bootstrap components after its feasibility checks pass: the catalog item, Spoke connection, Flow Designer flow, and OAuth application. Then implement the fulfilment logic. Confirm a catalog order actually launches an AAP job before claiming fully automated UC1 setup.
 
-The one external dependency is the Spoke app itself being present from the ServiceNow Store (see Prerequisites) and the IntegrationHub subscription that gates it.
+External prerequisites include the installed Spoke, its licensing entitlement, and a working ServiceNow-to-AAP connection. Resolve OAuth authorization and Flow deployment as described in Prerequisites; document any unavoidable manual authorization or installation step rather than classifying it as an automation bug. UC2 remains runnable independently.
 
 **Playbook `snow_catalog_fulfill.yml`** — launched by the Spoke with the catalog variables as extra_vars:
 - Reads request parameters
@@ -204,12 +216,21 @@ Build Phase 0 incrementally alongside the UCs rather than up front: add each obj
 
 ## Verification
 
-- **Reproducibility (the headline test):** run `bootstrap.yml` against a fresh ServiceNow instance with nothing but the seed account, then run all three UCs. Any manual step discovered here is a bug in Phase 0.
+- **Reproducibility (the headline test):** run bootstrap for the enabled use cases against a clean test instance with the documented prerequisites, then run those UCs. Verify UC2 without UC1/Spoke setup. Once UC1's feasibility checks pass, repeat with all three UCs and confirm that every unavoidable manual prerequisite is documented.
 - **Idempotence:** run `bootstrap.yml` twice — the second run reports no changes.
 - **Teardown:** `teardown.yml` leaves the instance clean enough that `bootstrap.yml` succeeds again afterwards.
-- **Seed deprovisioned:** confirm the seed account is inactive once bootstrap completes.
+- **Setup-account lifecycle:** confirm bootstrap and teardown leave the setup account available. Test optional finalization only after verification and confirming the documented way to regain authorized admin access for future setup or resets.
 - **UC2:** Zabbix alert → this demo's EDA activation fires (not the AIOps one) → incident appears in ServiceNow → resolves on recovery
+- **UC2 correlation and repeats:** repeat a problem notification and confirm it reuses the same incident; launch recovery independently and confirm it resolves that incident; repeat recovery and confirm it stays resolved. Verify missing/ambiguous matches are reported clearly.
 - **UC1:** catalog order → AAP job launches via Spoke → RITM closes
 - **UC3:** reconciliation run → discrepancy report → CMDB updates
 - **Non-interference:** after Phase 0, confirm the AIOps self-healing demo still runs unchanged
-- **Credential injection:** smoke-test `servicenow.itsm.incident_info` to confirm the env-var injection works
+- **Integration-account access and credential injection:** use the integration account through the AAP credential to read, create, update, and resolve a disposable demo incident. Verify CI read/write access before UC3 and request access before UC1. Successful admin-account operations are not evidence that the integration account has these permissions.
+- **Project and dependencies:** verify the dedicated project sync resolves repository-relative playbooks and project-root collection requirements, then smoke-test the required collections and Python dependencies in the selected EE before system bootstrap.
+
+## Supporting references
+
+- [ServiceNow REST API access and ACLs](https://www.servicenow.com/docs/r/api-reference/rest-api-explorer/c_RESTAPI.html)
+- [ServiceNow Ansible Spoke setup](https://www.servicenow.com/docs/r/integrate-applications/integration-hub/setup-ansible.html)
+- [Collection incident lookup and filters](https://github.com/ansible-collections/servicenow.itsm/blob/main/docs/servicenow.itsm.incident_info_module.rst)
+- [Original consultation material](https://github.com/shadowman-lab/Ansible-SNOW) — reference only; no file copying or adaptation.

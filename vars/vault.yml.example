@@ -11,7 +11,8 @@
 #     git diff --staged vars/vault.yml
 
 # Seed service account. Admin-scoped, "Web service access only" enabled.
-# The only hand-made object in this demo; bootstrap deprovisions it at the end.
+# Retained for bootstrap reruns and teardown. Deactivation is a separate,
+# optional finalization step with a documented path for future admin access.
 vault_sn_host: https://INSTANCE.service-now.com
 vault_sn_username: INSERT_SEED_USERNAME
 vault_sn_password: INSERT_SEED_PASSWORD

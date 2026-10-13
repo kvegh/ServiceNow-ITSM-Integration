@@ -24,21 +24,24 @@ first.
 
 ## Blocking an AAP project for this repo
 
-- [ ] **`collections/requirements.yml` will break project sync.** At a repo
-      root AAP runs `ansible-galaxy install` against it, and `community.zabbix`
-      is neither in `ee-supported-rhel9` nor on the configured galaxy server.
+- [ ] **Resolve project-root collection requirements before sync.** The plan
+      uses a dedicated AAP project pointing at this standalone repository over
+      HTTPS, so `collections/requirements.yml` is at its project root. Earlier
+      notes recorded `community.zabbix` as missing from the selected EE and
+      collection source. Verify the current source, make the collection
+      available for project sync, and verify its Python dependencies in the EE.
       The file was inert when this was a subdirectory of the monorepo; the
-      2026-10-05 split made it live. Either sync the collection to private
-      automation hub, or move the file off the magic path — the orchestrator
-      repo hit the same failure and took the second route.
+      split changed that assumption.
 
       No AAP project exists for this repo yet, so nothing is currently broken.
       Resolve before creating one.
 
-- [ ] **No `.gitignore` in this repo.** The umbrella's
-      `collections/ansible_collections/` rule does not apply to submodules, so
-      a local `ansible-galaxy collection install` would drop the installed tree
-      into the working copy and offer it for commit.
+- [ ] **Use a dedicated Snow AAP project.** Replace the umbrella-project
+      default in `vars/main.yml` before bootstrap. Job-template and rulebook
+      paths must be relative to this standalone repository root.
+- [x] **Local collection ignore rule.** This repository now ignores
+      `collections/ansible_collections/`; umbrella ignore rules do not apply
+      to submodules.
 
 ## Phase 0 — bootstrap (not started)
 
@@ -47,27 +50,38 @@ all up front, so the bootstrap is always exercised by something.
 
 - [ ] `bootstrap_servicenow.yml` — integration account and roles, catalog item
       and its variables, CMDB class usage, Spoke connection, Flow Designer
-      flow, then seed account deprovision. Uses `servicenow.itsm.api` for
+      flow for the enabled use cases. Retain the setup account for reruns and
+      teardown. Uses `servicenow.itsm.api` for
       generic table CRUD; the typed modules cover ITSM records but not platform
       configuration.
 - [ ] **Open question: the Flow Designer flow.** Building `sys_hub_flow` and
       its related records field-by-field over REST may be impractical. The
-      fallback is shipping the flow as an XML update set in `files/updatesets/`
-      and having the playbook import and commit it — still automated, different
-      mechanism. Verify which is viable before committing to an approach.
+      candidate fallback is an XML update set in `files/updatesets/`. Prove
+      automated import, preview, commit, activation, and dependency handling
+      before claiming this path works.
+- [ ] **Verify integration-account roles and table permissions.** The scaffold's
+      `rest_api_explorer` and `catalog_admin` roles do not establish incident or
+      CMDB write access. Test incident read/create/update/resolve with the
+      integration account, then request and CI operations as their UCs are added.
 - [ ] `bootstrap_aap.yml` — credential type injecting `SN_HOST` / `SN_USERNAME`
       / `SN_PASSWORD` as env vars, the credential itself, project, job
       templates, OAuth application, EDA decision environment, event stream and
       rulebook activation.
-- [ ] **AAP 2.5+ Spoke gotcha**, to handle in the AAP bootstrap: an
-      auto-applied API Script causes `401`s with the Spoke and must be removed,
-      and the connection alias must use the `/controller/v2` endpoint path.
+- [ ] **UC1 feasibility and version compatibility.** Verify ServiceNow-to-AAP
+      connectivity, TLS trust, Spoke availability, OAuth authorization/refresh,
+      and Flow deployment. Document unavoidable manual prerequisites. Apply
+      the reference's OAuth API Script workaround only if tested as necessary
+      for our installed versions and demo-owned application registry. Verify
+      the complete `/api/controller/v2/` endpoint and the Spoke's assembled URL.
+      Keep UC1 components gated so they do not block UC2.
 - [ ] `bootstrap_zabbix.yml` — trigger action and media type via
       `community.zabbix`, scoped to its own host group. Must be additive: read
       existing actions first and fail loudly rather than modifying anything the
       AIOps demo owns. Blocked on the `community.zabbix` availability question
       above.
 - [ ] `bootstrap.yml` and `teardown.yml` — entry points importing the three.
+- [ ] Optional `finalize_setup.yml` — deactivate the setup account only after
+      verification and documentation of future authorized admin access.
 
 ## Use cases (not started)
 
@@ -75,6 +89,10 @@ all up front, so the bootstrap is always exercised by something.
       Rulebook `extensions/eda/rulebooks/zabbix-to-snow.yml`, plus
       `snow_create_incident.yml` and `snow_update_incident.yml`. Stock incident
       fields only: no custom `u_*` columns, no hardcoded caller.
+- [ ] **UC2 incident correlation.** Persist the original problem ID in the
+      stock `correlation_id` field and look it up for independent recovery jobs.
+      Repeated problem notifications reuse the same incident; repeated recovery
+      leaves it resolved. Report missing or ambiguous matches clearly.
 - [ ] **UC1** — `snow_catalog_fulfill.yml`, launched by the Spoke with catalog
       variables as extra vars; closes the RITM and updates the CMDB CI.
 - [ ] **UC3** — `snow_cmdb_reconcile.yml`: gather host facts, query CMDB,
@@ -93,14 +111,17 @@ yet exist and would be fiction today.
 
 ## Verification targets
 
-The headline test for "everything automated": run `bootstrap.yml` against a
-fresh ServiceNow instance holding nothing but the seed account, then run all
-three use cases. Any manual step discovered there is a bug in Phase 0.
+Run bootstrap for the enabled use cases against a clean test instance with the
+documented prerequisites. Verify UC2 without Spoke setup; add UC1 after its
+feasibility checks pass. Document unavoidable manual prerequisites explicitly.
 
 - [ ] Bootstrap is idempotent — a second run reports no changes
 - [ ] `teardown.yml` leaves the instance clean enough that `bootstrap.yml`
       succeeds again
-- [ ] Seed account is inactive once the bootstrap completes
+- [ ] Bootstrap and teardown retain setup-account access; optional finalization
+      has a documented way to obtain authorized admin access for future resets
+- [ ] Integration-account permissions and injected credentials work for enabled UCs
+- [ ] Repeated alerts and independently launched recovery update the same incident
 - [ ] **Non-interference:** the AIOps self-healing demo still runs unchanged
 
 ## Context worth knowing

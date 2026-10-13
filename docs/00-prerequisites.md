@@ -8,8 +8,9 @@ verify before relying on it.
 
 ### Seed service account
 
-An admin-scoped ServiceNow user used for the first API call. There is no way to
-automate this: nothing can authenticate to the API before an API account exists.
+The initial admin setup account used for the first API call and bootstrap.
+Bootstrap needs an existing API account to authenticate before it can create
+the separate integration account used for everyday demo jobs.
 
 Required settings:
 
@@ -20,12 +21,13 @@ Required settings:
 | **Web service access only** | **true** |
 | Password needs reset | false |
 
-The "Web service access only" flag is the one that matters. Without it, SSO/MFA
-enforcement applies to the account and the API returns `401` regardless of the
-password being correct.
+Verify API authentication under the instance's existing access policies; do not
+assume a single account flag guarantees successful authentication.
 
-The bootstrap creates its own integration account and deprovisions this seed
-account as its final task.
+Bootstrap creates its own integration account and retains setup-account access
+for reruns, development, and teardown. Deactivation is a separate optional
+finalization step after verification, with a documented way to obtain authorized
+admin access for future setup or resets. Teardown retains the setup account too.
 
 ### IntegrationHub subscription
 
@@ -37,6 +39,21 @@ Confirm it is active before planning on UC1 — UC2 and UC3 do not need it.
 Installing the Ansible Spoke from the ServiceNow Store is most likely not
 API-automatable. Treat it as a one-time prerequisite rather than assuming the
 bootstrap covers it. Verify before committing to either position.
+
+### UC1 connection and deployment checks
+
+Verify ServiceNow-to-AAP reachability and TLS trust, the installed Spoke/AAP
+versions, OAuth authorization and token refresh, and automated Flow deployment.
+Use a supported connection path, including a MID Server where needed. An XML
+update set is a candidate deployment mechanism; automated import, preview,
+commit, and activation must be demonstrated with its dependencies. Document any
+unavoidable manual authorization step. These checks gate UC1, while UC2 remains
+runnable independently.
+
+The reference's OAuth API Script workaround is conditional on the installed
+versions and a demonstrated need, and applies only to this demo's application
+registry. Verify the assembled controller URL: `/api/controller/v2/` is the full
+path, while `controller/v2` may be the Spoke's version attribute.
 
 ## Verify before starting
 
@@ -52,33 +69,47 @@ Audited in `ee-supported-rhel9` on 2026-10-04:
 | `ansible.platform` | 2.7.20260812 | yes |
 | `community.zabbix` | — | **no** |
 
-Four of the five ship in the image, so AAP needs no install step for them. The
+This is a historical audit; recheck the currently selected image before relying
+on it. Four of the five were present then. The
 `servicenow.itsm` version also clears the 2.12.0 floor required by its EDA source
 plugin.
 
-`community.zabbix` is the gap. It is needed only by the Zabbix-side bootstrap
-(Phase 0.4). Options: sync it to private automation hub, bake it into a custom
-execution image, or perform that one bootstrap step by another means.
+`community.zabbix` was the gap. It is needed by the Zabbix-side bootstrap
+(Phase 0.4). Resolve its collection-source availability and verify required
+Python dependencies in the selected execution image before bootstrap.
 
 Re-check with:
 
     podman run --rm <ee-supported-image> ansible-galaxy collection list
 
-### collections/requirements.yml is a trap at a repo root
+### Dedicated project and collection requirements
 
-This file is for local development only:
+Use a dedicated `SNOW Demo - Project` that syncs this standalone repository over
+HTTPS. Replace the scaffold's umbrella-project default in `vars/main.yml` during
+implementation, before bootstrap runs. Playbook and rulebook paths are relative
+to this repository root.
+
+The project-root collection requirements also support local development:
 
     ansible-galaxy collection install -r collections/requirements.yml
 
 Note that AAP resolves `collections/requirements.yml` **at the project root**.
 Before the monorepo split this file sat in a subdirectory and was inert. Now
-that this repo is its own project root, AAP would run `ansible-galaxy install`
-against it during project sync — and fail, because `community.zabbix` is neither
-in the execution image nor on the configured galaxy server.
+that this repo is its own project root, AAP resolves the file during project sync
+when collection downloads are enabled. Earlier notes recorded `community.zabbix`
+as unavailable from the configured source; an unavailable required collection
+would cause sync to fail even if other required collections already exist in the EE.
 
-Either sync that collection, or move the file off the magic path, before
-creating an AAP project for this repo. No project exists yet, so nothing is
-currently broken.
+Verify the source and make all declared collections available before project
+sync. A collection download alone does not supply its Python dependencies.
+
+### Integration-account permissions
+
+Determine the roles and table permissions required by the enabled use cases.
+The scaffold's `rest_api_explorer` and `catalog_admin` list is not a verified
+incident/CMDB permission set. Use the integration account to test incident
+read/create/update/resolve for UC2, request access before UC1, and CI read/write
+before UC3. Admin-account success does not verify integration-account access.
 
 ## Vault
 
