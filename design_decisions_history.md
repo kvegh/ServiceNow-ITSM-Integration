@@ -26,3 +26,26 @@ The handoff also recorded a collection-availability concern after the repository
 became a standalone project root. The handoff purpose is documented by the commit
 subject; the collection concern is documented in its prerequisite guide. These
 were planning and documentation changes, not implemented or deployed automation.
+
+## Review corrections for repeatable demo execution — 2026-10-13
+
+Implementation commit: `8feca9e7c5873a8a00a5c7798371b1fe060d7970` (`Refine Snow demo setup and incident execution plan`).
+
+The user approved five focused corrections to the existing plan. Setup-account
+deactivation became a separate optional final step so bootstrap reruns and
+teardown retain admin access. Incident handling gained a persistent correlation
+key so independently launched recovery jobs find the original incident and
+repeated alerts reuse it. Integration-account permissions now require verification
+for the actual incident, request, and CI operations rather than relying on the
+initial role list.
+
+The plan also requires proving Spoke connectivity, OAuth, and automated Flow
+deployment before claiming complete UC1 automation, while keeping UC2 independent.
+Its project source and collection requirements now align with a dedicated AAP
+project for the standalone Snow repository. Dependency availability and Python
+requirements must be verified before bootstrap. README, tasks, prerequisite
+guidance, and scaffold comments were reconciled with these decisions.
+
+These reasons come from the review and the user's explicit instruction to add
+the changes. No automation was implemented or run, and no live accounts or
+integration objects were changed by this documentation update.
