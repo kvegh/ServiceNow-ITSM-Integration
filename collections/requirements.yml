@@ -15,12 +15,11 @@
 #     ansible.eda        2.12.1
 #     ansible.platform   2.7.20260812
 #
-# Recorded as missing then; resolve before Zabbix bootstrap and verify the
-# collection's required Python dependencies in the selected EE:
-#     community.zabbix
+# community.zabbix is deliberately absent. It is not in the EE and not on the
+# rh-certified galaxy server, so listing it here fails project sync outright.
+# Zabbix-side objects belong to the AIOps demo, which already owns them.
 collections:
     - name: servicenow.itsm       # ITSM records + generic table API
     - name: ansible.controller    # AAP job templates, credentials, projects
     - name: ansible.eda           # event streams, rulebook activations
     - name: ansible.platform      # gateway objects, OAuth application
-    - name: community.zabbix      # trigger action, media type
